@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ancillary data files
+/ancillary_data/**/*.tif
+/ancillary_data/**/*.aux*
+
+# Log file
+Log/
+
+# Output
+output/
+
+# Users inputs
+./*.json
+./*.csv
