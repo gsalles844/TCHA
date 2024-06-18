@@ -1,0 +1,15 @@
+name: tcrm_v2
+channels:
+  - defaults
+dependencies:
+  - python==3.11.8
+  - affine
+  - boto3
+  - netcdf4
+  - gdal
+  - tqdm
+  - pandas
+  - matplotlib
+  - scipy
+  - shapely
+prefix: C:\Users\gregoires\Anaconda3\envs\tcrm_v2

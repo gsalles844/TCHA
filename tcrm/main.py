@@ -125,6 +125,15 @@ def doCleanupAction(outpath, is_exception=False):
                 shutil.move(src, dst)
                 
             shutil.rmtree(filepath)
+            
+    def move_input_to_output(fpath):
+        root = os.path.split(os.path.dirname(__file__))[0]
+        for file in os.listdir(root):
+            if file.endswith('.csv') or file.endswith('.json'):
+                f_input = os.path.join(root, file)
+                f_output = os.path.join(fpath, file)
+                shutil.move(f_input, f_output)
+        return
     
     
     # In this case, we shouldnt have any results so we only remove the tmp file
@@ -134,6 +143,7 @@ def doCleanupAction(outpath, is_exception=False):
     else:
         remove_temporary_dir(tmp_path)
         sort_output(outpath)
+        move_input_to_output(outpath)
     
     
     
@@ -159,20 +169,27 @@ class ConfigPlugIn:
         Only the paths are added to the default configuration file. All the other
         values are neither modified nor defined.
         '''
+        config = ConfigParser()
+        config.read(self.default_tcevent_config)
+        
         
         tmp = self.make_tmp_dir()
         
         if self.config['tracks_source'] in ['RSMC']:
             tracks_file = self.relpath(['tmp', 'cyclone_tracks.csv'])
-            format_RSMC_track_files(self.config['tracks_file'], tracks_file)
+            dfmt = config.get('RSMC', 'DateFormat')
+            
+            tmp = self.relpath(['..', 'ancillary_data', self.config['country_code'] + '_wind_multipliers', 'EEZ'])
+            fname = [ f for f in os.listdir(tmp) if f.endswith('.shp') ][0]
+            eez_path = os.path.join(tmp, fname)
+            
+            format_RSMC_track_files(self.config['tracks_file'], tracks_file, eez_path, dfmt)
+            
         elif self.config['tracks_source'] == 'IBTrACS':
             tracks_file = self.config['tracks_file']
         else:
             raise ValueError('{} is not an accepted parameter. Sources can either be "RSMC" or "IBTraCS"'.format(self.config['tracks_source']))
-        
-        config = ConfigParser()
-        config.read(self.default_tcevent_config)
-        
+
         fpath = os.path.join(tmp, 'tmp_tcevent_config.ini')
         log_out = self.get_output_dir([self.config['cyclone_name'] + '.log'])
 

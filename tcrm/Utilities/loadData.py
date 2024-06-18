@@ -22,17 +22,21 @@ Modify the source to be a dict containing the kwargs to
 track files.
 
 """
-
-import sys
-import logging
-import numpy as np
-from . import metutils
-from . import maputils
-from . import nctools
-from . import interp3d
-
 from datetime import datetime, timedelta
-from .columns import colReadCSV
+import logging
+import geopandas as gpd
+import matplotlib.path as mplPath
+import numpy as np
+import os
+import shapely
+import sys
+
+from . columns import colReadCSV
+from . import interp3d
+from . import maputils
+from . import metutils
+from . import nctools
+
 from Utilities.config import ConfigParser, cnfGetIniValue
 from Utilities.track import Track, trackFields, trackTypes
 
@@ -317,7 +321,6 @@ def getInitialPositions(data):
         LOG.error("'index' field cannot be converted to integer")
     except KeyError:
         pass
-
     try:
         tcSerialNo = data['tcserialno']
         LOG.info("Using TC serial number to determine initial "
@@ -329,7 +332,6 @@ def getInitialPositions(data):
         return indicator
     except (ValueError, KeyError):
         pass
-
     try:
         num = np.array(data['num'], 'i')
         season = np.array(data['season'], 'i')
@@ -345,8 +347,7 @@ def getInitialPositions(data):
     except ValueError:
         LOG.error("'num' field cannot be converted to an integer")
 
-
-    try:
+    try:#TODO: here
         num = np.array(data['num'], 'i')
         LOG.info("Using TC number to determine initial TC positions "
                  "(no season information)")
@@ -841,7 +842,7 @@ def loadTrackFile(configFile, trackFile, source, missingValue=0,
 
     # Determine the initial TC positions...
     indicator = getInitialPositions(inputData)
-    
+
     # Sort date/time information
     if 'age' in inputData.dtype.names:
         year, month, day, hour, minute, datetimes = parseAge(inputData,
@@ -963,7 +964,36 @@ def loadTrackFile(configFile, trackFile, source, missingValue=0,
     return tracks
 
 
-def format_RSMC_track_files(fpath, fout):
+
+def is_point_in_shape(polyline, point):
+    '''
+    Returns True if the point(s) is in the closed polyline, False otherwise.
+    If a single point (x,y) is fed, a single boolean will be returned, if an
+    array of points (N,2) is fed, an array (N,) of booleans will be returned
+    
+    Parameters
+    ----------
+    polyline : (M,2) np.ndarray
+        Array of summits (x,y) composing a closed polyline.
+    point : (N,2) np.ndarray
+        Point(s) to test.
+
+    Returns
+    -------
+    Bool, (N,)
+        Boolean.
+
+    '''
+    bbPath = mplPath.Path(polyline, closed=True)
+    
+    if point.size == 2:
+        return bbPath.contains_point((point[0], point[1]))
+    else:
+        return bbPath.contains_points(point)
+
+
+
+def format_RSMC_track_files(fpath, fout, eez_path, dfmt):
     '''
     Function used to convert the track files produced by the RSMC into something
     more easily readable. A csv file contaning the data required for the model
@@ -982,17 +1012,20 @@ def format_RSMC_track_files(fpath, fout):
     '''
     import pandas as pd
     class RSMC:
-        def __init__(self, fpath):
+        def __init__(self, fpath, eez_path, dfmt):
             data = pd.read_csv(fpath, skiprows=8, usecols=[0,1,2,4,5,6,10], 
                                names=['time','lat','lon','cat','pmin','poci','wind'])
             
-            self.num = np.ones(np.array(data['time']).shape)
-            self.date = np.array(data['time'])
-            self.lat = np.array(data['lat'])
-            self.lon = np.array(data['lon'])
-            self.cat = np.array(data['cat'])
-            self.pmin = np.array(data['pmin'])
-            self.wind = np.array(data['wind'])
+            msk = self.crop_input_tracks(np.array(data['lon']), np.array(data['lat']), np.array(data['time']), dfmt, eez_path)
+            # msk = np.full(len(data['time']), True)
+            
+            self.num = np.ones(np.array(data['time']).shape)[msk]
+            self.date = np.array(data['time'])[msk]
+            self.lat = np.array(data['lat'])[msk]
+            self.lon = np.array(data['lon'])[msk]
+            self.cat = np.array(data['cat'])[msk]
+            self.pmin = np.array(data['pmin'])[msk]
+            self.wind = np.array(data['wind'])[msk]
             self.rmax = self._rmax()
             
         def _rmax(self):
@@ -1004,13 +1037,29 @@ def format_RSMC_track_files(fpath, fout):
                     - (self.wind/35.3052)**3 - (145.5090*np.cos(np.deg2rad(self.lat)))
             return rmax
         
+        def crop_input_tracks(self, lon, lat, time, dfmt, eez_path):
+            
+            eez_gpd = gpd.read_file(eez_path)
+            polyline = shapely.get_coordinates(eez_gpd['geometry'])
+            
+            points = np.hstack((lon[:,None], lat[:,None]))
+            msk = is_point_in_shape(polyline, points)
+            
+            # dfmt = '%Y-%m-%d %H:%M:%S'
+            dtime = np.array([ datetime.strptime(v, dfmt) for v in time ])
+            t0 = dtime[msk][0] - timedelta(hours=24)
+            t1 = dtime[msk][-1] + timedelta(hours=24)
+            
+            msk_time = ((dtime > t0) & (dtime < t1))
+            return msk_time
+        
         def export_to_csv(self, fout):
             varDict = { item[0] : item[1] for item in self.__dict__.items() }
             df = pd.DataFrame(varDict)
             df.to_csv(fout, index=False)
             return
             
-    Tracks = RSMC(fpath)
+    Tracks = RSMC(fpath, eez_path, dfmt)
     Tracks.export_to_csv(fout)
     return
 
