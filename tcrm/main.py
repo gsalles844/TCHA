@@ -125,7 +125,7 @@ def doCleanupAction(outpath, is_exception=False):
                 shutil.move(src, dst)
                 
             shutil.rmtree(filepath)
-            
+    #TODO: faire un truc plus propre la dessus
     def move_input_to_output(fpath):
         root = os.path.split(os.path.dirname(__file__))[0]
         for file in os.listdir(root):
@@ -135,7 +135,9 @@ def doCleanupAction(outpath, is_exception=False):
                 shutil.move(f_input, f_output)
         return
     
-    
+    # Better make sure every processes are done with their files opening / closing
+    from time import sleep
+    sleep(1)
     # In this case, we shouldnt have any results so we only remove the tmp file
     tmp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'tmp'))
     if is_exception:
@@ -151,7 +153,7 @@ def doCleanupAction(outpath, is_exception=False):
 
 
 class ConfigPlugIn:
-    tcevent_sections = ['DataProcess', 'WindfieldInterface', 'Input', 'Timeseries', 'Output', 'Logging', 'IBTrACS', 'RSMC']
+    tcevent_sections = ['DataProcess', 'WindfieldInterface', 'Input', 'Timeseries', 'Output', 'Logging', 'IBTrACS', 'RSMC', 'Region']
     local_winds_sections = ['Input', 'Output', 'Logging']
     
     def __init__(self, json_config):
@@ -179,11 +181,11 @@ class ConfigPlugIn:
             tracks_file = self.relpath(['tmp', 'cyclone_tracks.csv'])
             dfmt = config.get('RSMC', 'DateFormat')
             
-            tmp = self.relpath(['..', 'ancillary_data', self.config['country_code'] + '_wind_multipliers', 'EEZ'])
-            fname = [ f for f in os.listdir(tmp) if f.endswith('.shp') ][0]
-            eez_path = os.path.join(tmp, fname)
+            tmp2 = self.relpath(['..', 'ancillary_data', self.config['country_code'] + '_wind_multipliers', 'EEZ'])
+            fname = [ f for f in os.listdir(tmp2) if f.endswith('.shp') ][0]
+            eez_path = os.path.join(tmp2, fname)
             
-            format_RSMC_track_files(self.config['tracks_file'], tracks_file, eez_path, dfmt)
+            gridLim = format_RSMC_track_files(self.config['tracks_file'], tracks_file, eez_path, dfmt)
             
         elif self.config['tracks_source'] == 'IBTrACS':
             tracks_file = self.config['tracks_file']
@@ -198,6 +200,7 @@ class ConfigPlugIn:
         config.set('DataProcess', 'Source', self.config['tracks_source'])
         config.set('Output', 'Path', tmp) 
         config.set('Logging', 'LogFile', log_out)
+        config.set('Region', 'gridLimit', gridLim)
         
         # Write it into a text file
         self.write_configuration_file(config, fpath, module='tcevent')
@@ -284,7 +287,6 @@ class ConfigPlugIn:
         # Write the configuration into the temporary folder
         with open(fpath, 'w') as f:
             f.writelines(content)
-        
     
     def get_output_dir(self, items=[]):
         '''
@@ -410,7 +412,7 @@ def setup():
     
     log.info('End of the tcevent module')
     log.info('Starting to work on the estimation of local winds')
-    
+    # sys.exit(0)
     # Creating a path pointing to the regional wind dataset to use it as inputs
     gust_file = [ f for f in os.listdir(windfieldPath) if f.startswith('gust') ][0]
     windfieldPath = os.path.join(windfieldPath, gust_file)

@@ -309,7 +309,11 @@ class _ConfigParser(RawConfigParser):
         for name, value in raw:
             try:
                 parse = PARSERS['%s_%s' % (section, name)]
-                parsed[name] = parse(value)
+                # Dirty patch, otherwise gridLimit was not accepted (don't ask me why...)
+                if name.lower() == 'gridlimit':
+                    parsed[name] = value
+                else:
+                    parsed[name] = parse(value)
             except KeyError:
                 parsed[name] = value
         return list(parsed.items())
