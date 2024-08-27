@@ -10,6 +10,7 @@ from functools import reduce, wraps
 import json
 import logging as log
 import os
+from osgeo import gdal
 import shutil
 import sys
 import time
@@ -73,6 +74,17 @@ def doOutputDirectoryCreation(configFile):
             except OSError:
                 raise
 
+def merge_output_files(fdir, flist):
+    
+    out_vrt = os.path.join(fdir, 'local_wind_merged.vrt')
+    fout = os.path.join(fdir, 'local_wind_merged.tif')
+    
+    gdal.BuildVRT(out_vrt, flist)
+    translateoptions = gdal.TranslateOptions(format='GTiff', creationOptions = ["COMPRESS=DEFLATE" ,"PREDICTOR=2"])
+    gdal.Translate(fout, out_vrt, options=translateoptions)
+    return
+
+
 def doCleanupAction(outpath, is_exception=False):
     '''
     Small collection of functions to clean up after the run. The main purpose is
@@ -95,7 +107,11 @@ def doCleanupAction(outpath, is_exception=False):
         if os.path.isdir(tmp_path):
             shutil.rmtree(tmp_path)
     
+    
     def sort_output(fpath):
+        merge_files = True
+        files_to_merge = []
+        
         dname = 'data'
         new_out = os.path.join(fpath, dname)
         if not os.path.isdir(new_out):
@@ -111,8 +127,7 @@ def doCleanupAction(outpath, is_exception=False):
                 pass
         
             filepath = os.path.join(fpath, file)
-            files_to_keep = ['bear_prj.tif', 'gust_prj.tif', \
-                             'local_wind.tif', 'region_wind.tif']
+            files_to_keep = ['local_wind.tif', 'region_wind.tif']
             tiffList = [f for f in os.listdir(filepath) if f in files_to_keep]
             
             for f in tiffList:
@@ -120,11 +135,30 @@ def doCleanupAction(outpath, is_exception=False):
                 
                 if 'region_wind' in f:
                     dst = os.path.join(new_out, f)
+                    shutil.move(src, dst)
+                elif 'local_wind' in f and merge_files:
+                    files_to_merge.append(src)
                 else:
                     dst = os.path.join(new_out, file + '_' + f)
-                shutil.move(src, dst)
-                
+                    shutil.move(src, dst)
+            
+        # Merge the files if needed
+        if merge_files:
+            merge_output_files(new_out, files_to_merge)
+        
+        # Remove the directories we won't be using anymore
+        for file in flist:
+            if not os.path.isdir(os.path.join(fpath, file)):
+                continue
+            elif file == dname:
+                continue
+            else:
+                pass
+        
+            filepath = os.path.join(fpath, file)
             shutil.rmtree(filepath)
+        
+        
     #TODO: faire un truc plus propre la dessus
     def move_input_to_output(fpath):
         root = os.path.split(os.path.dirname(__file__))[0]

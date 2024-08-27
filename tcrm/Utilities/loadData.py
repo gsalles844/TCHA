@@ -1014,10 +1014,15 @@ def format_RSMC_track_files(fpath, fout, eez_path, dfmt):
             df = pd.DataFrame(varDict)
             df.to_csv(fout, index=False)
             return
+        
+        def convert_longitude_to_0_360(self):
+            self.lon[self.lon < 0] += 360
+            return
             
     Tracks = RSMC(fpath)
+    Tracks.convert_longitude_to_0_360()
     Tracks.export_to_csv(fout)
-    
+
     eez_gpd = gpd.read_file(eez_path)
     polyline = shapely.get_coordinates(eez_gpd['geometry'])
     
